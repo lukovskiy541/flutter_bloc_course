@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:weather_app/cubits/weather/weather_cubit.dart';
 import 'package:weather_app/pages/home_page.dart';
+import 'package:weather_app/repositories/weather_repository.dart';
+import 'package:weather_app/services/services.dart';
+import 'package:http/http.dart' as http;
 
 void main() async {
   await dotenv.load(fileName: '.env');
@@ -13,13 +18,29 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Flutter Demo',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-        useMaterial3: true,
+    return RepositoryProvider(
+      create: (context) => WeatherRepository(
+        weatherApiServices: Services(
+          httpClient: http.Client(),
+        ),
       ),
-      home: const HomePage(),
+      child: MultiBlocProvider(
+        providers: [
+         BlocProvider<WeatherCubit>(
+              create: (context) => WeatherCubit(
+                weatherRepository: context.read<WeatherRepository>(),
+              ),
+            ),
+        ],
+        child:  MaterialApp(
+          title: 'Flutter Demo',
+          theme: ThemeData(
+            colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+            useMaterial3: true,
+          ),
+          home: const HomePage(),
+        ),
+      ),
     );
   }
 }

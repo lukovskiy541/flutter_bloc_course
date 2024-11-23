@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:weather_app/repositories/weather_repository.dart';
-import 'package:weather_app/services/services.dart';
-import 'package:http/http.dart' as http;
-import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:recase/recase.dart';
+import 'package:weather_app/constants/constants.dart';
+import 'package:weather_app/widgets/error_dialog.dart';
+
+import '../cubits/weather/weather_cubit.dart';
+import 'search_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -12,42 +15,164 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  @override
-  void initState() {
-    super.initState();
-
-    _checkConnectionAndFetchWeather();
-  }
-   Future<void> _checkConnectionAndFetchWeather() async {
-    final connectivityResult = await Connectivity().checkConnectivity();
-    if (connectivityResult == ConnectivityResult.none) {
-      print('No internet connection');
-      return;
-    }
-    _fetchWeather();
-  }
-
-  Future<void> _fetchWeather() async {
-    print('myfetchweather');
-    try {
-      final weather = await WeatherRepository(
-              weatherApiServices: Services(httpClient: http.Client()))
-          .fetchWeather('London');
-      print('Fetched weather: $weather');
-    } catch (e) {
-      print('Error fetching weather: $e');
-    }
-  }
+  String? _city;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Weather'),
+        actions: [
+          IconButton(
+            onPressed: () async {
+              // to avoid async gap warning
+              final weatherCubit = context.read<WeatherCubit>();
+
+              _city = await Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) {
+                  return const SearchPage();
+                }),
+              );
+              print('city: $_city');
+              if (_city != null) {
+                weatherCubit.fetchWeather(_city!);
+              }
+            },
+            icon: const Icon(Icons.search),
+          ),
+        ],
       ),
-      body: const Center(
-        child: Text('Home'),
-      ),
+      body: _showWeather(),
+    );
+  }
+
+  String showTemperature(double temperature) {
+    // to avoid prefer_interpolation_to_compose_strings warning
+    return '${temperature.toStringAsFixed(2)}℃';
+  }
+
+  Widget showIcon(String icon) {
+    return FadeInImage.assetNetwork(
+      placeholder: 'assets/images/loading.gif',
+      image: 'http://$kIconHost/img/wn/$icon@4x.png',
+      width: 96,
+      height: 96,
+    );
+  }
+
+  Widget formatText(String description) {
+    final formattedString = description.titleCase;
+    return Text(
+      formattedString,
+      style: const TextStyle(fontSize: 24.0),
+      textAlign: TextAlign.center,
+    );
+  }
+
+  Widget _showWeather() {
+    return BlocConsumer<WeatherCubit, WeatherState>(
+      listener: (context, state) {
+        if (state.status == WeatherStatus.error) {
+          errorDialog(context, state.error.errMsg);
+        }
+      },
+      builder: (context, state) {
+        if (state.status == WeatherStatus.initial) {
+          return const Center(
+            child: Text(
+              'Select a city',
+              style: TextStyle(fontSize: 20.0),
+            ),
+          );
+        }
+
+        if (state.status == WeatherStatus.loading) {
+          return const Center(
+            child: CircularProgressIndicator(),
+          );
+        }
+
+        if (state.status == WeatherStatus.error && state.weather.name == '') {
+          return const Center(
+            child: Text(
+              'Select a city',
+              style: TextStyle(fontSize: 20.0),
+            ),
+          );
+        }
+
+        return ListView(
+          children: [
+            SizedBox(
+              height: MediaQuery.of(context).size.height / 6,
+            ),
+            Text(
+              state.weather.name,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 40.0,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 10.0),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  TimeOfDay.fromDateTime(state.weather.lastUpdated).format(context),
+                  style: const TextStyle(fontSize: 18.0),
+                ),
+                const SizedBox(width: 10.0),
+                Text(
+                  '(${state.weather.country})',
+                  style: const TextStyle(fontSize: 18.0),
+                ),
+              ],
+            ),
+            const SizedBox(height: 60.0),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  showTemperature(state.weather.temp),
+                  style: const TextStyle(
+                    fontSize: 30.0,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(width: 20.0),
+                Column(
+                  children: [
+                    Text(
+                      showTemperature(state.weather.tempMax),
+                      style: const TextStyle(fontSize: 16.0),
+                    ),
+                    const SizedBox(height: 10.0),
+                    Text(
+                      showTemperature(state.weather.tempMin),
+                      style: const TextStyle(fontSize: 16.0),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 40.0),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                const Spacer(),
+                showIcon(state.weather.icon),
+                Expanded(
+                  flex: 3,
+                  child: formatText(state.weather.description),
+                ),
+                const Spacer(),
+              ],
+            ),
+          ],
+        );
+      },
     );
   }
 }
